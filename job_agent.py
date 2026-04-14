@@ -45,14 +45,14 @@ Target roles: Sales Operations Manager, Sales Support Operations Manager,
 
 # ─── JOB SEARCH QUERIES ───────────────────────────────────────────
 SEARCH_QUERIES = [
-    "Sales Operations Manager",
-    "Sales Support Operations Manager",
-    "Business Development Manager",
-    "Regional Sales Manager",
-    "Inside Sales Manager",
-    "Channel Sales Manager",
+    "Sales Operations Manager Malaysia",
+    "Sales Support Manager Malaysia",
+    "Business Development Manager Malaysia",
+    "Regional Sales Manager Malaysia",
+    "Inside Sales Manager Kuala Lumpur",
+    "Channel Sales Manager Malaysia",
+    "Sales Manager Kuala Lumpur",
 ]
-SEARCH_LOCATION = "Malaysia"
 
 # No location filter — "Malaysia" is embedded in every query
 # Location is shown clearly in the email digest for manual review
@@ -120,59 +120,75 @@ def deduplicate(jobs: list[dict]) -> list[dict]:
 
 
 # ─── SCORE WITH CLAUDE ────────────────────────────────────────────
-def score_jobs_with_claude(jobs: list[dict]) -> list[dict]:
-    if not jobs:
-        return []
-
-    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+def score_batch(client, batch: list[dict], offset: int) -> list[dict]:
+    """Score a batch of up to 10 jobs."""
     jobs_text = "\n\n".join([
         f"JOB {i+1}:\nTitle: {j['title']}\nCompany: {j['company']}\n"
-        f"Location: {j.get('location','')}\nDescription: {j['snippet']}"
-        for i, j in enumerate(jobs)
+        f"Location: {j.get('location','')}\nDescription: {j['snippet'][:200]}"
+        for i, j in enumerate(batch)
     ])
-
-    prompt = f"""You are a job match analyst. Score each job against this candidate profile.
+    prompt = f"""Score these {len(batch)} jobs against this candidate profile.
 
 CANDIDATE PROFILE:
 {PROFILE}
 
-JOBS TO SCORE:
+JOBS:
 {jobs_text}
 
-Return a JSON array. Each object must have:
-- job_number (int)
-- match_score (0-100)
-- match_reason (1 sentence, specific)
-- key_requirements (list of 3 strings)
-- apply_recommendation (one of: "Strong Apply", "Apply", "Maybe", "Skip")
+Return a JSON array with {len(batch)} objects. Each object:
+- job_number (int, 1 to {len(batch)})
+- match_score (int, 0-100)
+- match_reason (string, 1 sentence)
+- key_requirements (array of 3 strings)
+- apply_recommendation (string: "Strong Apply", "Apply", "Maybe", or "Skip")
 
-Return ONLY valid JSON array, no other text."""
+Return ONLY the JSON array. Start with [ end with ]. No other text."""
 
-    try:
-        msg = client.messages.create(
-            model="claude-haiku-4-5-20251001",
-            max_tokens=2000,
-            messages=[{"role": "user", "content": prompt}]
-        )
-        raw    = msg.content[0].text.strip()
-        raw    = re.sub(r"^```json|^```|```$", "", raw, flags=re.MULTILINE).strip()
-        scores = json.loads(raw)
-        for s in scores:
-            idx = s.get("job_number", 0) - 1
-            if 0 <= idx < len(jobs):
-                jobs[idx]["match_score"]         = s.get("match_score", 0)
-                jobs[idx]["match_reason"]         = s.get("match_reason", "")
-                jobs[idx]["key_requirements"]     = s.get("key_requirements", [])
-                jobs[idx]["apply_recommendation"] = s.get("apply_recommendation", "Maybe")
-        return jobs
-    except Exception as e:
-        print(f"  Claude scoring error: {e}")
-        for j in jobs:
-            j.setdefault("match_score", 50)
-            j.setdefault("match_reason", "Unable to score")
-            j.setdefault("key_requirements", [])
-            j.setdefault("apply_recommendation", "Review manually")
-        return jobs
+    msg = client.messages.create(
+        model="claude-haiku-4-5-20251001",
+        max_tokens=1500,
+        messages=[{"role": "user", "content": prompt}]
+    )
+    raw = msg.content[0].text.strip()
+    raw = re.sub(r"^```json\s*|^```\s*|```\s*$", "", raw, flags=re.MULTILINE).strip()
+    raw = re.sub(r",\s*([}\]])", r"\1", raw)
+    arr_match = re.search(r"\[.*\]", raw, re.DOTALL)
+    if arr_match:
+        raw = arr_match.group(0)
+    scores = json.loads(raw)
+    for s in scores:
+        idx = offset + s.get("job_number", 0) - 1
+        if 0 <= idx < len(batch) + offset:
+            real_idx = s.get("job_number", 0) - 1
+            if 0 <= real_idx < len(batch):
+                batch[real_idx]["match_score"]         = int(s.get("match_score", 50))
+                batch[real_idx]["match_reason"]         = s.get("match_reason", "")
+                batch[real_idx]["key_requirements"]     = s.get("key_requirements", [])
+                batch[real_idx]["apply_recommendation"] = s.get("apply_recommendation", "Maybe")
+    return batch
+
+
+def score_jobs_with_claude(jobs: list[dict]) -> list[dict]:
+    if not jobs:
+        return []
+    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+
+    # Score in batches of 8 to avoid token limit issues
+    BATCH = 8
+    for i in range(0, len(jobs), BATCH):
+        batch = jobs[i:i+BATCH]
+        try:
+            scored = score_batch(client, batch, i)
+            jobs[i:i+BATCH] = scored
+            print(f"  Scored batch {i//BATCH + 1} ({len(batch)} jobs)")
+        except Exception as e:
+            print(f"  Batch {i//BATCH + 1} scoring error: {e}")
+            for j in batch:
+                j.setdefault("match_score", 50)
+                j.setdefault("match_reason", "Score unavailable")
+                j.setdefault("key_requirements", [])
+                j.setdefault("apply_recommendation", "Review manually")
+    return jobs
 
 
 # ─── BUILD HTML EMAIL ─────────────────────────────────────────────
