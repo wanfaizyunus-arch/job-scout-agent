@@ -45,54 +45,67 @@ Target roles: Sales Operations Manager, Sales Support Operations Manager,
 """
 
 # ─── JOB SEARCH QUERIES ───────────────────────────────────────────
+# Each tuple: (search_query, location_filter)
 SEARCH_QUERIES = [
-    "Sales Operations Manager",
-    "Sales Support Manager",
-    "Business Development Manager",
-    "Regional Sales Manager",
-    "Inside Sales Manager",
+    ("Sales Operations Manager",          "Kuala Lumpur"),
+    ("Sales Support Manager",             "Malaysia"),
+    ("Business Development Manager",      "Kuala Lumpur"),
+    ("Regional Sales Manager",            "Malaysia"),
+    ("Inside Sales Manager",              "Malaysia"),
+    ("Sales Operations Manager",          "Selangor"),
+    ("Channel Sales Manager",             "Malaysia"),
 ]
 
+# Malaysia keyword filter — reject jobs outside MY
+MY_KEYWORDS = [
+    "malaysia", "kuala lumpur", "kl", "petaling jaya", "pj",
+    "cyberjaya", "putrajaya", "shah alam", "subang", "bangsar",
+    "mont kiara", "klcc", "selangor", "penang", "johor",
+    "remote, my", "my -", "- my"
+]
+
+def is_malaysia_job(title: str, location: str, snippet: str) -> bool:
+    """Return True only if the job appears to be based in Malaysia."""
+    combined = (title + " " + location + " " + snippet).lower()
+    return any(kw in combined for kw in MY_KEYWORDS)
+
 # ─── ADZUNA API SEARCH ────────────────────────────────────────────
-def search_adzuna(query: str, max_results: int = 6) -> list[dict]:
-    """Fetch jobs from Adzuna API — Malaysia (sg is closest, or use gb for testing)."""
-    # Adzuna country codes: gb=UK, us=USA, au=Australia, sg=Singapore (closest to MY)
-    # Use 'sg' for Singapore which covers SEA region
-    country = "sg"
+def search_adzuna(query: str, location: str = "Malaysia", max_results: int = 8) -> list[dict]:
+    """Fetch jobs from Adzuna API filtered strictly to Malaysia."""
+    # Adzuna SG endpoint covers Southeast Asia including Malaysia
     params = urllib.parse.urlencode({
-        "app_id":          ADZUNA_APP_ID,
-        "app_key":         ADZUNA_APP_KEY,
+        "app_id":           ADZUNA_APP_ID,
+        "app_key":          ADZUNA_APP_KEY,
         "results_per_page": max_results,
-        "what":            query,
-        "where":           "Malaysia",
-        "sort_by":         "date",
-        "content-type":    "application/json",
+        "what":             query,
+        "where":            location,
+        "sort_by":          "date",
+        "content-type":     "application/json",
     })
-    # Try Singapore first, fall back to global search
-    urls_to_try = [
-        f"https://api.adzuna.com/v1/api/jobs/sg/search/1?{params}",
-        f"https://api.adzuna.com/v1/api/jobs/gb/search/1?{urllib.parse.urlencode({'app_id':ADZUNA_APP_ID,'app_key':ADZUNA_APP_KEY,'results_per_page':max_results,'what':query,'sort_by':'date','content-type':'application/json'})}",
-    ]
+    url = f"https://api.adzuna.com/v1/api/jobs/sg/search/1?{params}"
 
-    for url in urls_to_try:
-        try:
-            req  = urllib.request.Request(url, headers={"User-Agent": "JobAgent/2.0"})
-            resp = urllib.request.urlopen(req, timeout=15)
-            data = json.loads(resp.read().decode("utf-8"))
-            results = data.get("results", [])
-            jobs = []
-            for r in results:
-                title    = r.get("title", "").strip()
-                company  = r.get("company", {}).get("display_name", "Unknown")
-                location = r.get("location", {}).get("display_name", "Malaysia")
-                url_link = r.get("redirect_url", "")
-                desc     = re.sub(r"<[^>]+>", " ", r.get("description", ""))
-                desc     = re.sub(r"\s+", " ", desc).strip()[:400]
-                salary   = ""
-                if r.get("salary_min") and r.get("salary_max"):
-                    salary = f"${r['salary_min']:,.0f}–${r['salary_max']:,.0f}"
+    try:
+        req  = urllib.request.Request(url, headers={"User-Agent": "JobAgent/2.0"})
+        resp = urllib.request.urlopen(req, timeout=15)
+        data = json.loads(resp.read().decode("utf-8"))
+        results = data.get("results", [])
+        jobs = []
+        for r in results:
+            title    = r.get("title", "").strip()
+            company  = r.get("company", {}).get("display_name", "Unknown")
+            location_str = r.get("location", {}).get("display_name", "")
+            url_link = r.get("redirect_url", "")
+            desc     = re.sub(r"<[^>]+>", " ", r.get("description", ""))
+            desc     = re.sub(r"\s+", " ", desc).strip()[:400]
+            salary   = ""
+            if r.get("salary_min") and r.get("salary_max"):
+                salary = f"MYR {r['salary_min']:,.0f}–{r['salary_max']:,.0f}"
 
-                if title and url_link:
+            # ── MALAYSIA FILTER: skip jobs not in Malaysia ──
+            if not is_malaysia_job(title, location_str, desc):
+                continue
+
+            if title and url_link:
                     jobs.append({
                         "title":    title,
                         "company":  company,
@@ -321,10 +334,10 @@ def main():
     print(f"{'='*50}")
 
     all_jobs = []
-    for query in SEARCH_QUERIES:
-        print(f"\n  Searching: '{query}'...")
-        results = search_adzuna(query, max_results=6)
-        print(f"  Found {len(results)} listings")
+    for query, location in SEARCH_QUERIES:
+        print(f"\n  Searching: '{query}' in {location}...")
+        results = search_adzuna(query, location=location, max_results=8)
+        print(f"  Found {len(results)} Malaysia listings")
         all_jobs.extend(results)
 
     all_jobs = deduplicate(all_jobs)
