@@ -45,72 +45,75 @@ Target roles: Sales Operations Manager, Sales Support Operations Manager,
 """
 
 # ─── JOB SEARCH QUERIES ───────────────────────────────────────────
-# Embed "Malaysia" in the query so Adzuna filters at source
 SEARCH_QUERIES = [
-    ("Sales Operations Manager Malaysia",          "Malaysia"),
-    ("Sales Support Manager Malaysia",             "Malaysia"),
-    ("Business Development Manager Malaysia",      "Malaysia"),
-    ("Regional Sales Manager Malaysia",            "Malaysia"),
-    ("Inside Sales Manager Kuala Lumpur",          "Malaysia"),
-    ("Channel Sales Manager Malaysia",             "Malaysia"),
-    ("Sales Manager Kuala Lumpur",                 "Malaysia"),
+    "Sales Operations Manager Malaysia",
+    "Sales Support Manager Malaysia",
+    "Business Development Manager Malaysia",
+    "Regional Sales Manager Malaysia",
+    "Inside Sales Manager Kuala Lumpur",
+    "Channel Sales Manager Malaysia",
+    "Sales Manager Kuala Lumpur",
 ]
 
-# Negative filter — reject jobs clearly NOT in Malaysia
+# Reject jobs clearly NOT in Malaysia/SEA
 NOT_MALAYSIA = [
     "london", "new york", "sydney", "melbourne", "toronto",
-    "dubai", "hong kong", "tokyo", "beijing", "shanghai",
-    "new delhi", "mumbai", "bangalore", "jakarta", "bangkok",
-    "united kingdom", "united states", "australia", "canada",
-    "germany", "france", "netherlands", " uk ", "usa",
+    "dubai", "hong kong", "tokyo", "beijing", "new delhi",
+    "mumbai", "bangalore", "jakarta", "united kingdom",
+    "australia", "canada", "germany", "france",
 ]
 
 def is_malaysia_job(title: str, location: str, snippet: str) -> bool:
-    """Reject only jobs that are clearly outside Malaysia."""
     combined = (title + " " + location + " " + snippet).lower()
     return not any(kw in combined for kw in NOT_MALAYSIA)
 
 # ─── ADZUNA API SEARCH ────────────────────────────────────────────
-def search_adzuna(query: str, location: str = "Malaysia", max_results: int = 8) -> list[dict]:
+def search_adzuna(query: str, max_results: int = 8) -> list[dict]:
+    """Search Adzuna GB endpoint — has international listings including Malaysia."""
+    # GB endpoint indexes global/international roles including SEA/Malaysia
+    # Query already contains "Malaysia" or "Kuala Lumpur" to target results
     params = urllib.parse.urlencode({
         "app_id":           ADZUNA_APP_ID,
         "app_key":          ADZUNA_APP_KEY,
         "results_per_page": max_results,
         "what":             query,
-        "where":            location,
         "sort_by":          "date",
         "content-type":     "application/json",
     })
-    url = f"https://api.adzuna.com/v1/api/jobs/sg/search/1?{params}"
-    try:
-        req  = urllib.request.Request(url, headers={"User-Agent": "JobAgent/2.0"})
-        resp = urllib.request.urlopen(req, timeout=15)
-        data = json.loads(resp.read().decode("utf-8"))
-        jobs = []
-        for r in data.get("results", []):
-            title    = r.get("title", "").strip()
-            company  = r.get("company", {}).get("display_name", "Unknown")
-            loc_str  = r.get("location", {}).get("display_name", "")
-            url_link = r.get("redirect_url", "")
-            desc     = re.sub(r"<[^>]+>", " ", r.get("description", ""))
-            desc     = re.sub(r"\s+", " ", desc).strip()[:400]
-            salary   = ""
-            if r.get("salary_min") and r.get("salary_max"):
-                salary = f"MYR {r['salary_min']:,.0f}-{r['salary_max']:,.0f}"
-            if title and url_link and is_malaysia_job(title, loc_str, desc):
-                jobs.append({
-                    "title":    title,
-                    "company":  company,
-                    "location": loc_str,
-                    "salary":   salary,
-                    "url":      url_link,
-                    "snippet":  desc,
-                    "query":    query,
-                })
-        return jobs
-    except Exception as e:
-        print(f"  Adzuna error: {e}")
-        return []
+    for country in ["gb", "sg", "us"]:
+        url = f"https://api.adzuna.com/v1/api/jobs/{country}/search/1?{params}"
+        try:
+            req  = urllib.request.Request(url, headers={"User-Agent": "JobAgent/2.0"})
+            resp = urllib.request.urlopen(req, timeout=15)
+            data = json.loads(resp.read().decode("utf-8"))
+            jobs = []
+            for r in data.get("results", []):
+                title    = r.get("title", "").strip()
+                company  = r.get("company", {}).get("display_name", "Unknown")
+                loc_str  = r.get("location", {}).get("display_name", "Malaysia")
+                url_link = r.get("redirect_url", "")
+                desc     = re.sub(r"<[^>]+>", " ", r.get("description", ""))
+                desc     = re.sub(r"\s+", " ", desc).strip()[:400]
+                salary   = ""
+                if r.get("salary_min") and r.get("salary_max"):
+                    salary = f"{r['salary_min']:,.0f}-{r['salary_max']:,.0f}"
+                if title and url_link and is_malaysia_job(title, loc_str, desc):
+                    jobs.append({
+                        "title":    title,
+                        "company":  company,
+                        "location": loc_str,
+                        "salary":   salary,
+                        "url":      url_link,
+                        "snippet":  desc,
+                        "query":    query,
+                    })
+            if jobs:
+                print(f"    Got {len(jobs)} results from /{country}/ endpoint")
+                return jobs
+        except Exception as e:
+            print(f"    /{country}/ error: {e}")
+            continue
+    return []
 
 # ─── DEDUPLICATE ──────────────────────────────────────────────────
 def deduplicate(jobs: list[dict]) -> list[dict]:
@@ -322,10 +325,10 @@ def main():
     print(f"{'='*50}")
 
     all_jobs = []
-    for query, location in SEARCH_QUERIES:
-        print(f"\n  Searching: '{query}' in {location}...")
-        results = search_adzuna(query, location=location, max_results=8)
-        print(f"  Found {len(results)} Malaysia listings")
+    for query in SEARCH_QUERIES:
+        print(f"\n  Searching: '{query}'...")
+        results = search_adzuna(query, max_results=8)
+        print(f"  Found {len(results)} listings")
         all_jobs.extend(results)
 
     all_jobs = deduplicate(all_jobs)
