@@ -66,14 +66,14 @@ regional, renewals, channel, or inside sales — these are direct skill matches.
 
 # ─── JOB SEARCH QUERIES ───────────────────────────────────────────
 SEARCH_QUERIES = [
-    "Sales Operations Manager",
-    "Sales Support Operations Manager",
-    "Business Development Manager",
-    "Regional Sales Manager",
-    "Inside Sales Manager",
-    "Channel Sales Manager",
+    "Sales Operations Manager Malaysia",
+    "Sales Support Manager Malaysia",
+    "Business Development Manager Malaysia",
+    "Regional Sales Manager Malaysia",
+    "Inside Sales Manager Kuala Lumpur",
+    "Channel Sales Manager Malaysia",
+    "Sales Manager Kuala Lumpur",
 ]
-SEARCH_LOCATION = "Malaysia"
 
 # No location filter — "Malaysia" is embedded in every query
 # Location is shown clearly in the email digest for manual review
@@ -85,7 +85,7 @@ def search_jsearch(query: str, location: str = "Malaysia", max_results: int = 8)
         "query":          f"{query} in {location}",
         "page":           "1",
         "num_pages":      "1",
-        "date_posted":    "week",
+        "date_posted":    "3days",
         "employment_types": "FULLTIME,CONTRACTOR",
     })
     url = f"https://jsearch.p.rapidapi.com/search?{params}"
@@ -105,20 +105,47 @@ def search_jsearch(query: str, location: str = "Malaysia", max_results: int = 8)
             city     = r.get("job_city", "")
             country  = r.get("job_country", "")
             loc_str  = ", ".join(filter(None, [city, country])) or "Malaysia"
-            url_link = r.get("job_apply_link") or r.get("job_google_link", "")
-            desc     = r.get("job_description", "")[:400]
-            salary   = ""
+            # Prefer direct apply link over Google aggregator link
+            apply_url  = r.get("job_apply_link", "") or ""
+            google_url = r.get("job_google_link", "") or ""
+            url_link   = apply_url if apply_url else google_url
+
+            # Skip paid aggregators, subscription walls, and job scrapers
+            BLOCKED = [
+                "jooble", "jobleads", "joblift", "jobgether",
+                "recruitnet", "talentify", "careerjet", "jobrapido",
+                "trovit", "jobsora", "neuvoo", "jobted",
+                "jobs2careers", "ziprecruiter.com/c/",
+            ]
+            if not url_link or any(b in url_link.lower() for b in BLOCKED):
+                print(f"      Skipped (blocked domain): {title}")
+                continue
+
+            desc  = r.get("job_description", "")[:400]
             s_min = r.get("job_min_salary")
             s_max = r.get("job_max_salary")
             s_cur = r.get("job_salary_currency", "")
-            if s_min and s_max:
-                salary = f"{s_cur} {s_min:,.0f}-{s_max:,.0f}"
+            salary = f"MYR {s_min:,.0f}–{s_max:,.0f}" if s_min and s_max else (
+                     f"{s_cur} {s_min:,.0f}–{s_max:,.0f}" if s_min and s_max and s_cur else "")
+
+            # Extract posted date
+            posted = r.get("job_posted_at_datetime_utc", "") or r.get("job_posted_at", "")
+            if posted and "T" in str(posted):
+                try:
+                    from datetime import datetime, timezone
+                    dt       = datetime.fromisoformat(str(posted).replace("Z", "+00:00"))
+                    days_ago = (datetime.now(timezone.utc) - dt).days
+                    posted   = "today" if days_ago == 0 else f"{days_ago}d ago"
+                except Exception:
+                    posted = str(posted)[:10]
+
             if title and url_link:
                 jobs.append({
                     "title":    title,
                     "company":  company,
                     "location": loc_str,
                     "salary":   salary,
+                    "posted":   posted,
                     "url":      url_link,
                     "snippet":  desc,
                     "query":    query,
