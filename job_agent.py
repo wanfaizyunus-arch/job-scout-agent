@@ -123,9 +123,7 @@ def search_jsearch(query: str, location: str = "Malaysia", max_results: int = 8)
                 "adzuna.com", "reed.co.uk",
                 "jobsearch.com.au", "seek.com",
             ]
-            if not url_link or any(b in url_link.lower() for b in BLOCKED):
-                print(f"      Skipped (blocked domain): {title}")
-                continue
+            # (domain check already handled above)
 
             desc  = r.get("job_description", "")[:400]
             s_min = r.get("job_min_salary")
