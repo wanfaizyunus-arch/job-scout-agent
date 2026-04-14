@@ -71,8 +71,6 @@ def is_malaysia_job(title: str, location: str, snippet: str) -> bool:
 
 # ─── ADZUNA API SEARCH ────────────────────────────────────────────
 def search_adzuna(query: str, location: str = "Malaysia", max_results: int = 8) -> list[dict]:
-    """Fetch jobs from Adzuna API filtered strictly to Malaysia."""
-    # Adzuna SG endpoint covers Southeast Asia including Malaysia
     params = urllib.parse.urlencode({
         "app_id":           ADZUNA_APP_ID,
         "app_key":          ADZUNA_APP_KEY,
@@ -83,46 +81,35 @@ def search_adzuna(query: str, location: str = "Malaysia", max_results: int = 8) 
         "content-type":     "application/json",
     })
     url = f"https://api.adzuna.com/v1/api/jobs/sg/search/1?{params}"
-
     try:
         req  = urllib.request.Request(url, headers={"User-Agent": "JobAgent/2.0"})
         resp = urllib.request.urlopen(req, timeout=15)
         data = json.loads(resp.read().decode("utf-8"))
-        results = data.get("results", [])
         jobs = []
-        for r in results:
+        for r in data.get("results", []):
             title    = r.get("title", "").strip()
             company  = r.get("company", {}).get("display_name", "Unknown")
-            location_str = r.get("location", {}).get("display_name", "")
+            loc_str  = r.get("location", {}).get("display_name", "")
             url_link = r.get("redirect_url", "")
             desc     = re.sub(r"<[^>]+>", " ", r.get("description", ""))
             desc     = re.sub(r"\s+", " ", desc).strip()[:400]
             salary   = ""
             if r.get("salary_min") and r.get("salary_max"):
-                salary = f"MYR {r['salary_min']:,.0f}–{r['salary_max']:,.0f}"
-
-            # ── MALAYSIA FILTER: skip jobs not in Malaysia ──
-            if not is_malaysia_job(title, location_str, desc):
-                continue
-
-            if title and url_link:
-                    jobs.append({
-                        "title":    title,
-                        "company":  company,
-                        "location": location,
-                        "salary":   salary,
-                        "url":      url_link,
-                        "snippet":  desc,
-                        "query":    query,
-                    })
-            if jobs:
-                return jobs
-        except Exception as e:
-            print(f"    Adzuna error ({url[:50]}...): {e}")
-            continue
-
-    return []
-
+                salary = f"MYR {r['salary_min']:,.0f}-{r['salary_max']:,.0f}"
+            if title and url_link and is_malaysia_job(title, loc_str, desc):
+                jobs.append({
+                    "title":    title,
+                    "company":  company,
+                    "location": loc_str,
+                    "salary":   salary,
+                    "url":      url_link,
+                    "snippet":  desc,
+                    "query":    query,
+                })
+        return jobs
+    except Exception as e:
+        print(f"  Adzuna error: {e}")
+        return []
 
 # ─── DEDUPLICATE ──────────────────────────────────────────────────
 def deduplicate(jobs: list[dict]) -> list[dict]:
