@@ -4,7 +4,7 @@ Uses Adzuna API (free tier) instead of Indeed RSS.
 Faiz's autonomous job scout: runs daily, finds new jobs, scores each
 against your profile with Claude AI, and emails a ranked digest.
 """
- 
+
 import os
 import re
 import json
@@ -15,7 +15,7 @@ from datetime import datetime
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 import anthropic
- 
+
 # ─── CONFIGURATION ────────────────────────────────────────────────
 ANTHROPIC_API_KEY = os.environ["ANTHROPIC_API_KEY"]
 GMAIL_ADDRESS     = os.environ["GMAIL_ADDRESS"]
@@ -23,7 +23,7 @@ GMAIL_APP_PW      = os.environ["GMAIL_APP_PASSWORD"]
 RECIPIENT_EMAIL   = os.environ.get("RECIPIENT_EMAIL", GMAIL_ADDRESS)
 ADZUNA_APP_ID     = os.environ["ADZUNA_APP_ID"]
 ADZUNA_APP_KEY    = os.environ["ADZUNA_APP_KEY"]
- 
+
 # ─── FAIZ'S PROFILE ───────────────────────────────────────────────
 PROFILE = """
 Name: Wan Muhammad Faiz Bin Wan Yunus
@@ -43,7 +43,7 @@ Languages: English, Bahasa Malaysia
 Target roles: Sales Operations Manager, Sales Support Operations Manager,
               Business Development Manager APAC, Regional Sales Lead
 """
- 
+
 # ─── JOB SEARCH QUERIES ───────────────────────────────────────────
 SEARCH_QUERIES = [
     "Sales Operations Manager",
@@ -52,7 +52,7 @@ SEARCH_QUERIES = [
     "Regional Sales Manager",
     "Inside Sales Manager",
 ]
- 
+
 # ─── ADZUNA API SEARCH ────────────────────────────────────────────
 def search_adzuna(query: str, max_results: int = 6) -> list[dict]:
     """Fetch jobs from Adzuna API — Malaysia (sg is closest, or use gb for testing)."""
@@ -73,7 +73,7 @@ def search_adzuna(query: str, max_results: int = 6) -> list[dict]:
         f"https://api.adzuna.com/v1/api/jobs/sg/search/1?{params}",
         f"https://api.adzuna.com/v1/api/jobs/gb/search/1?{urllib.parse.urlencode({'app_id':ADZUNA_APP_ID,'app_key':ADZUNA_APP_KEY,'results_per_page':max_results,'what':query,'sort_by':'date','content-type':'application/json'})}",
     ]
- 
+
     for url in urls_to_try:
         try:
             req  = urllib.request.Request(url, headers={"User-Agent": "JobAgent/2.0"})
@@ -91,7 +91,7 @@ def search_adzuna(query: str, max_results: int = 6) -> list[dict]:
                 salary   = ""
                 if r.get("salary_min") and r.get("salary_max"):
                     salary = f"${r['salary_min']:,.0f}–${r['salary_max']:,.0f}"
- 
+
                 if title and url_link:
                     jobs.append({
                         "title":    title,
@@ -107,10 +107,10 @@ def search_adzuna(query: str, max_results: int = 6) -> list[dict]:
         except Exception as e:
             print(f"    Adzuna error ({url[:50]}...): {e}")
             continue
- 
+
     return []
- 
- 
+
+
 # ─── DEDUPLICATE ──────────────────────────────────────────────────
 def deduplicate(jobs: list[dict]) -> list[dict]:
     seen, unique = set(), []
@@ -120,37 +120,37 @@ def deduplicate(jobs: list[dict]) -> list[dict]:
             seen.add(key)
             unique.append(j)
     return unique
- 
- 
+
+
 # ─── SCORE WITH CLAUDE ────────────────────────────────────────────
 def score_jobs_with_claude(jobs: list[dict]) -> list[dict]:
     if not jobs:
         return []
- 
+
     client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
     jobs_text = "\n\n".join([
         f"JOB {i+1}:\nTitle: {j['title']}\nCompany: {j['company']}\n"
         f"Location: {j.get('location','')}\nDescription: {j['snippet']}"
         for i, j in enumerate(jobs)
     ])
- 
+
     prompt = f"""You are a job match analyst. Score each job against this candidate profile.
- 
+
 CANDIDATE PROFILE:
 {PROFILE}
- 
+
 JOBS TO SCORE:
 {jobs_text}
- 
+
 Return a JSON array. Each object must have:
 - job_number (int)
 - match_score (0-100)
 - match_reason (1 sentence, specific)
 - key_requirements (list of 3 strings)
 - apply_recommendation (one of: "Strong Apply", "Apply", "Maybe", "Skip")
- 
+
 Return ONLY valid JSON array, no other text."""
- 
+
     try:
         msg = client.messages.create(
             model="claude-haiku-4-5-20251001",
@@ -176,13 +176,13 @@ Return ONLY valid JSON array, no other text."""
             j.setdefault("key_requirements", [])
             j.setdefault("apply_recommendation", "Review manually")
         return jobs
- 
- 
+
+
 # ─── BUILD HTML EMAIL ─────────────────────────────────────────────
 def build_email_html(jobs: list[dict], today_str: str) -> str:
     def score_color(s):
         return "#2ec4a4" if s >= 80 else "#f0a030" if s >= 60 else "#888780"
- 
+
     def rec_badge(rec):
         colors = {
             "Strong Apply": ("#2ec4a4","#0a2e28"),
@@ -194,10 +194,10 @@ def build_email_html(jobs: list[dict], today_str: str) -> str:
         return (f'<span style="background:{bg};color:{fg};font-size:10px;font-weight:600;'
                 f'padding:3px 10px;border-radius:12px;font-family:monospace;'
                 f'letter-spacing:0.06em">{rec.upper()}</span>')
- 
+
     sorted_jobs = sorted(jobs, key=lambda j: j.get("match_score",0), reverse=True)
     top_jobs    = [j for j in sorted_jobs if j.get("apply_recommendation") != "Skip"][:10]
- 
+
     job_cards = ""
     for i, j in enumerate(top_jobs):
         score = j.get("match_score", 0)
@@ -210,7 +210,7 @@ def build_email_html(jobs: list[dict], today_str: str) -> str:
         sal_tag = (f'<span style="background:#1a2e1a;color:#5cb87a;font-size:10px;'
                    f'padding:2px 8px;border-radius:10px;font-family:monospace;margin-left:6px">'
                    f'{j["salary"]}</span>') if j.get("salary") else ""
- 
+
         job_cards += f"""
         <div style="background:#1a1d27;border:1px solid #2a2d3a;border-left:3px solid {color};
                     border-radius:8px;padding:16px 18px;margin-bottom:12px">
@@ -243,10 +243,10 @@ def build_email_html(jobs: list[dict], today_str: str) -> str:
                font-family:monospace;letter-spacing:0.06em">VIEW JOB ↗</a>
           </div>
         </div>"""
- 
+
     strong_count = len([j for j in jobs if j.get("match_score",0) >= 70])
     apply_count  = len([j for j in jobs if j.get("apply_recommendation") in ["Strong Apply","Apply"]])
- 
+
     return f"""<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
@@ -298,8 +298,8 @@ def build_email_html(jobs: list[dict], today_str: str) -> str:
   </div>
 </body>
 </html>"""
- 
- 
+
+
 # ─── SEND EMAIL ───────────────────────────────────────────────────
 def send_email(subject: str, html_body: str):
     msg = MIMEMultipart("alternative")
@@ -311,42 +311,41 @@ def send_email(subject: str, html_body: str):
         server.login(GMAIL_ADDRESS, GMAIL_APP_PW)
         server.sendmail(GMAIL_ADDRESS, RECIPIENT_EMAIL, msg.as_string())
     print(f"  ✓ Email sent to {RECIPIENT_EMAIL}")
- 
- 
+
+
 # ─── MAIN ─────────────────────────────────────────────────────────
 def main():
     today_str = datetime.now().strftime("%A, %d %B %Y")
     print(f"\n{'='*50}")
     print(f"  Job Scout Agent v2 — {today_str}")
     print(f"{'='*50}")
- 
+
     all_jobs = []
     for query in SEARCH_QUERIES:
         print(f"\n  Searching: '{query}'...")
         results = search_adzuna(query, max_results=6)
         print(f"  Found {len(results)} listings")
         all_jobs.extend(results)
- 
+
     all_jobs = deduplicate(all_jobs)
     print(f"\n  Total unique jobs: {len(all_jobs)}")
- 
+
     if not all_jobs:
         print("  No jobs found — skipping email.")
         return
- 
+
     print(f"\n  Scoring {len(all_jobs)} jobs with Claude...")
     scored = score_jobs_with_claude(all_jobs)
     strong = len([j for j in scored if j.get("match_score", 0) >= 70])
     print(f"  Strong matches (70%+): {strong}")
- 
+
     print("\n  Sending email digest...")
     html    = build_email_html(scored, today_str)
     subject = (f"🎯 {strong} Strong Job Match{'es' if strong != 1 else ''} Today — "
                f"{datetime.now().strftime('%d %b %Y')}")
     send_email(subject, html)
     print(f"\n  Done.\n")
- 
- 
+
+
 if __name__ == "__main__":
     main()
- 
