@@ -45,14 +45,14 @@ Target roles: Sales Operations Manager, Sales Support Operations Manager,
 
 # ─── JOB SEARCH QUERIES ───────────────────────────────────────────
 SEARCH_QUERIES = [
-    "Sales Operations Manager Malaysia",
-    "Sales Support Manager Malaysia",
-    "Business Development Manager Malaysia",
-    "Regional Sales Manager Malaysia",
-    "Inside Sales Manager Kuala Lumpur",
-    "Channel Sales Manager Malaysia",
-    "Sales Manager Kuala Lumpur",
+    "Sales Operations Manager",
+    "Sales Support Operations Manager",
+    "Business Development Manager",
+    "Regional Sales Manager",
+    "Inside Sales Manager",
+    "Channel Sales Manager",
 ]
+SEARCH_LOCATION = "Malaysia"
 
 # No location filter — "Malaysia" is embedded in every query
 # Location is shown clearly in the email digest for manual review
