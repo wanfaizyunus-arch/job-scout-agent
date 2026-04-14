@@ -257,6 +257,10 @@ def build_email_html(jobs: list[dict], today_str: str) -> str:
         sal_tag = (f'<span style="background:#1a2e1a;color:#5cb87a;font-size:10px;'
                    f'padding:2px 8px;border-radius:10px;font-family:monospace;margin-left:6px">'
                    f'{j["salary"]}</span>') if j.get("salary") else ""
+        posted_tag = (
+            f'<span style="background:#1a1a2e;color:#5f5d58;font-size:10px;padding:2px 8px;border-radius:10px;font-family:monospace;margin-left:6px">"'
+            f'Posted: {j.get("posted","")}</span>'
+        ) if j.get("posted") else ""
 
         job_cards += f"""
         <div style="background:#1a1d27;border:1px solid #2a2d3a;border-left:3px solid {color};
@@ -267,7 +271,7 @@ def build_email_html(jobs: list[dict], today_str: str) -> str:
               <div style="font-family:Georgia,serif;font-size:15px;font-weight:bold;
                           color:#e8e6df;margin-bottom:3px">{i+1}. {j['title']}</div>
               <div style="font-size:12px;color:{color};font-weight:600">
-                {j.get('company','Unknown')}{sal_tag}
+                {j.get('company','Unknown')}{sal_tag}{posted_tag}
               </div>
               <div style="font-size:11px;color:#5f5d58;margin-top:2px">
                 📍 {j.get('location','')}
