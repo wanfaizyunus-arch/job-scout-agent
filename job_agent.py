@@ -21,8 +21,7 @@ ANTHROPIC_API_KEY = os.environ["ANTHROPIC_API_KEY"]
 GMAIL_ADDRESS     = os.environ["GMAIL_ADDRESS"]
 GMAIL_APP_PW      = os.environ["GMAIL_APP_PASSWORD"]
 RECIPIENT_EMAIL   = os.environ.get("RECIPIENT_EMAIL", GMAIL_ADDRESS)
-ADZUNA_APP_ID     = os.environ["ADZUNA_APP_ID"]
-ADZUNA_APP_KEY    = os.environ["ADZUNA_APP_KEY"]
+RAPIDAPI_KEY      = os.environ["RAPIDAPI_KEY"]
 
 # ─── FAIZ'S PROFILE ───────────────────────────────────────────────
 PROFILE = """
@@ -58,52 +57,56 @@ SEARCH_QUERIES = [
 # No location filter — "Malaysia" is embedded in every query
 # Location is shown clearly in the email digest for manual review
 
-# ─── ADZUNA API SEARCH ────────────────────────────────────────────
-def search_adzuna(query: str, max_results: int = 8) -> list[dict]:
-    """Search Adzuna across multiple endpoints. Returns all results — location shown in email."""
+# ─── JSEARCH API (RapidAPI) ──────────────────────────────────────
+def search_jsearch(query: str, location: str = "Malaysia", max_results: int = 8) -> list[dict]:
+    """Search jobs via JSearch API — pulls from Google Jobs, LinkedIn, Indeed, JobStreet."""
     params = urllib.parse.urlencode({
-        "app_id":           ADZUNA_APP_ID,
-        "app_key":          ADZUNA_APP_KEY,
-        "results_per_page": max_results,
-        "what":             query,
-        "sort_by":          "date",
-        "content-type":     "application/json",
+        "query":          f"{query} in {location}",
+        "page":           "1",
+        "num_pages":      "1",
+        "date_posted":    "week",
+        "employment_types": "FULLTIME,CONTRACTOR",
     })
-    for country in ["gb", "sg", "us", "au"]:
-        url = f"https://api.adzuna.com/v1/api/jobs/{country}/search/1?{params}"
-        try:
-            req  = urllib.request.Request(url, headers={"User-Agent": "JobAgent/2.0"})
-            resp = urllib.request.urlopen(req, timeout=15)
-            data = json.loads(resp.read().decode("utf-8"))
-            raw  = data.get("results", [])
-            print(f"    /{country}/ returned {len(raw)} raw results")
-            jobs = []
-            for r in raw:
-                title    = r.get("title", "").strip()
-                company  = r.get("company", {}).get("display_name", "Unknown")
-                loc_str  = r.get("location", {}).get("display_name", "See listing")
-                url_link = r.get("redirect_url", "")
-                desc     = re.sub(r"<[^>]+>", " ", r.get("description", ""))
-                desc     = re.sub(r" +", " ", desc).strip()[:400]
-                salary   = ""
-                if r.get("salary_min") and r.get("salary_max"):
-                    salary = f"{r['salary_min']:,.0f}-{r['salary_max']:,.0f}"
-                if title and url_link:
-                    jobs.append({
-                        "title":    title,
-                        "company":  company,
-                        "location": loc_str,
-                        "salary":   salary,
-                        "url":      url_link,
-                        "snippet":  desc,
-                        "query":    query,
-                    })
-            if jobs:
-                return jobs
-        except Exception as e:
-            print(f"    /{country}/ error: {e}")
-            continue
-    return []
+    url = f"https://jsearch.p.rapidapi.com/search?{params}"
+    headers = {
+        "X-RapidAPI-Key":  RAPIDAPI_KEY,
+        "X-RapidAPI-Host": "jsearch.p.rapidapi.com",
+        "User-Agent":      "JobAgent/3.0"
+    }
+    try:
+        req  = urllib.request.Request(url, headers=headers)
+        resp = urllib.request.urlopen(req, timeout=15)
+        data = json.loads(resp.read().decode("utf-8"))
+        jobs = []
+        for r in data.get("data", [])[:max_results]:
+            title    = r.get("job_title", "").strip()
+            company  = r.get("employer_name", "Unknown")
+            city     = r.get("job_city", "")
+            country  = r.get("job_country", "")
+            loc_str  = ", ".join(filter(None, [city, country])) or "Malaysia"
+            url_link = r.get("job_apply_link") or r.get("job_google_link", "")
+            desc     = r.get("job_description", "")[:400]
+            salary   = ""
+            s_min = r.get("job_min_salary")
+            s_max = r.get("job_max_salary")
+            s_cur = r.get("job_salary_currency", "")
+            if s_min and s_max:
+                salary = f"{s_cur} {s_min:,.0f}-{s_max:,.0f}"
+            if title and url_link:
+                jobs.append({
+                    "title":    title,
+                    "company":  company,
+                    "location": loc_str,
+                    "salary":   salary,
+                    "url":      url_link,
+                    "snippet":  desc,
+                    "query":    query,
+                })
+        print(f"    JSearch returned {len(jobs)} results")
+        return jobs
+    except Exception as e:
+        print(f"    JSearch error: {e}")
+        return []
 
 # ─── DEDUPLICATE ──────────────────────────────────────────────────
 def deduplicate(jobs: list[dict]) -> list[dict]:
@@ -316,8 +319,8 @@ def main():
 
     all_jobs = []
     for query in SEARCH_QUERIES:
-        print(f"\n  Searching: '{query}'...")
-        results = search_adzuna(query, max_results=8)
+        print(f"\n  Searching: '{query}' in {SEARCH_LOCATION}...")
+        results = search_jsearch(query, location=SEARCH_LOCATION, max_results=8)
         print(f"  Found {len(results)} listings")
         all_jobs.extend(results)
 
