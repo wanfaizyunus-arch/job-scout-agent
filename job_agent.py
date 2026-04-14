@@ -45,29 +45,30 @@ Target roles: Sales Operations Manager, Sales Support Operations Manager,
 """
 
 # ─── JOB SEARCH QUERIES ───────────────────────────────────────────
-# Each tuple: (search_query, location_filter)
+# Embed "Malaysia" in the query so Adzuna filters at source
 SEARCH_QUERIES = [
-    ("Sales Operations Manager",          "Kuala Lumpur"),
-    ("Sales Support Manager",             "Malaysia"),
-    ("Business Development Manager",      "Kuala Lumpur"),
-    ("Regional Sales Manager",            "Malaysia"),
-    ("Inside Sales Manager",              "Malaysia"),
-    ("Sales Operations Manager",          "Selangor"),
-    ("Channel Sales Manager",             "Malaysia"),
+    ("Sales Operations Manager Malaysia",          "Malaysia"),
+    ("Sales Support Manager Malaysia",             "Malaysia"),
+    ("Business Development Manager Malaysia",      "Malaysia"),
+    ("Regional Sales Manager Malaysia",            "Malaysia"),
+    ("Inside Sales Manager Kuala Lumpur",          "Malaysia"),
+    ("Channel Sales Manager Malaysia",             "Malaysia"),
+    ("Sales Manager Kuala Lumpur",                 "Malaysia"),
 ]
 
-# Malaysia keyword filter — reject jobs outside MY
-MY_KEYWORDS = [
-    "malaysia", "kuala lumpur", "kl", "petaling jaya", "pj",
-    "cyberjaya", "putrajaya", "shah alam", "subang", "bangsar",
-    "mont kiara", "klcc", "selangor", "penang", "johor",
-    "remote, my", "my -", "- my"
+# Negative filter — reject jobs clearly NOT in Malaysia
+NOT_MALAYSIA = [
+    "london", "new york", "sydney", "melbourne", "toronto",
+    "dubai", "hong kong", "tokyo", "beijing", "shanghai",
+    "new delhi", "mumbai", "bangalore", "jakarta", "bangkok",
+    "united kingdom", "united states", "australia", "canada",
+    "germany", "france", "netherlands", " uk ", "usa",
 ]
 
 def is_malaysia_job(title: str, location: str, snippet: str) -> bool:
-    """Return True only if the job appears to be based in Malaysia."""
+    """Reject only jobs that are clearly outside Malaysia."""
     combined = (title + " " + location + " " + snippet).lower()
-    return any(kw in combined for kw in MY_KEYWORDS)
+    return not any(kw in combined for kw in NOT_MALAYSIA)
 
 # ─── ADZUNA API SEARCH ────────────────────────────────────────────
 def search_adzuna(query: str, location: str = "Malaysia", max_results: int = 8) -> list[dict]:
