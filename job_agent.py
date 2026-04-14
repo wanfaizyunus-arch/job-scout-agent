@@ -41,6 +41,27 @@ Skills: Salesforce CRM, Power BI, Sales Operations, Team Leadership,
 Languages: English, Bahasa Malaysia
 Target roles: Sales Operations Manager, Sales Support Operations Manager,
               Business Development Manager APAC, Regional Sales Lead
+
+MATCHING CRITERIA (apply these strictly when scoring):
+
+Salary Expectation: MYR 13,000/month minimum. Roles below this or clearly
+junior/entry-level should score max 40 and be marked "Skip".
+
+Preferred Industries (in priority order):
+1. Technology / IT / Semiconductor (HIGHEST priority — direct experience)
+2. BPO / Shared Services / Outsourcing (HIGH priority — direct experience via Concentrix)
+3. Energy / Oil & Gas / Utilities (MEDIUM priority — good fit for ops roles)
+4. Telecommunications (MEDIUM priority — transferable fit)
+Roles in unrelated industries (retail, F&B, property, healthcare) score max 55.
+
+Location: Kuala Lumpur or Selangor strongly preferred. Remote or hybrid acceptable.
+Roles requiring relocation outside Malaysia should score max 35.
+
+Seniority: Manager level and above only. Executive, Associate, or fresh grad
+roles should score max 30 and be marked "Skip".
+
+Scoring boost: Add +10 to score if role mentions Salesforce, Power BI, APAC,
+regional, renewals, channel, or inside sales — these are direct skill matches.
 """
 
 # ─── JOB SEARCH QUERIES ───────────────────────────────────────────
@@ -127,22 +148,35 @@ def score_batch(client, batch: list[dict], offset: int) -> list[dict]:
         f"Location: {j.get('location','')}\nDescription: {j['snippet'][:200]}"
         for i, j in enumerate(batch)
     ])
-    prompt = f"""Score these {len(batch)} jobs against this candidate profile.
+    prompt = f"""Score these {len(batch)} jobs against the candidate profile below.
+Pay close attention to the MATCHING CRITERIA section — apply salary, industry,
+seniority and location rules strictly when assigning scores.
 
 CANDIDATE PROFILE:
 {PROFILE}
 
-JOBS:
+JOBS TO SCORE:
 {jobs_text}
 
-Return a JSON array with {len(batch)} objects. Each object:
+Scoring rules summary:
+- Below MYR 13k or clearly junior/entry → max score 40, mark Skip
+- Tech/IT/Semiconductor industry → score boost, highest priority
+- BPO/Shared Services → score boost, high priority (direct Concentrix experience)
+- Energy/Oil & Gas → acceptable, slight boost
+- Telecom → acceptable
+- Unrelated industry (retail, F&B, property, healthcare) → max score 55
+- Outside Malaysia (relocation required) → max score 35
+- Manager level+ only; exec/associate/fresh grad → max score 30, mark Skip
+- Direct skill match (Salesforce, Power BI, APAC, regional, renewals, channel) → +10 boost
+
+Return a JSON array with exactly {len(batch)} objects. Each object:
 - job_number (int, 1 to {len(batch)})
 - match_score (int, 0-100)
-- match_reason (string, 1 sentence)
-- key_requirements (array of 3 strings)
+- match_reason (string, 1 specific sentence explaining the score)
+- key_requirements (array of exactly 3 strings from the job description)
 - apply_recommendation (string: "Strong Apply", "Apply", "Maybe", or "Skip")
 
-Return ONLY the JSON array. Start with [ end with ]. No other text."""
+Return ONLY the JSON array. Start with [ and end with ]. No other text."""
 
     msg = client.messages.create(
         model="claude-haiku-4-5-20251001",
